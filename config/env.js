@@ -1,0 +1,39 @@
+import dotenv from "dotenv";
+import { z } from "zod";
+
+dotenv.config();
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  PORT: z.coerce.number().default(5000),
+
+  GOOGLE_API_KEY: z.string().min(1, "GOOGLE_API_KEY is required"),
+  QDRANT_URL: z.string().url("QDRANT_URL must be a valid URL"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+
+  // Auth is disabled for now (see server.js). Set this and re-enable
+  // apiKeyAuth in server.js before deploying publicly.
+  API_KEY: z.string().min(16).optional(),
+
+  // CORS - "*" for now during dev, replace with real origin(s) once deployed
+  ALLOWED_ORIGINS: z.string().default("*"),
+
+  // Internal base URL the agent's tools call to reach routes/tools.js.
+  // Leave unset while everything runs in one process (defaults to localhost:PORT).
+  // Set this if you ever split tool logic into a separate service.
+  TOOLS_BASE_URL: z.string().url().optional(),
+
+  // Rate limiting
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000), // 15 min
+  RATE_LIMIT_MAX: z.coerce.number().default(100),
+});
+
+const parsed = envSchema.safeParse(process.env);
+
+if (!parsed.success) {
+  console.error("❌ Invalid environment variables:");
+  console.error(parsed.error.flatten().fieldErrors);
+  process.exit(1);
+}
+
+export const env = parsed.data;
