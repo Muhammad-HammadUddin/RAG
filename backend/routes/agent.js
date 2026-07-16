@@ -1,0 +1,347 @@
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import express from "express";
+import multer from "multer";
+import { z } from "zod";
+import {
+    SystemMessage,
+    HumanMessage,
+    AIMessage,
+    ToolMessage,
+} from "@langchain/core/messages";
+import { createClient } from "redis";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+
+import { env } from "../config/env.js";
+import { asyncHandler } from "../middleware/errorhandler.js";
+import { agentRateLimiter } from "../middleware/ratelimiter.js";
+import { createTools } from "./tools.js";
+
+const router = express.Router();
+
+const MAX_AGENT_STEPS = 5;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadDir = path.resolve(__dirname, "../uploads");
+
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const safeName = path.basename(file.originalname).replace(/\s+/g, "-");
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, `${uniqueSuffix}-${safeName}`);
+    },
+});
+
+const upload = multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const isPdf =
+            file.mimetype === "application/pdf" ||
+            file.originalname?.toLowerCase().endsWith(".pdf");
+
+        if (!isPdf) {
+            cb(new Error("Only PDF files are allowed."));
+            return;
+        }
+
+        cb(null, true);
+    },
+});
+
+
+
+// ====================== LLM ======================
+
+const llm = new ChatGoogleGenerativeAI({
+    apiKey: env.GOOGLE_API_KEY,
+    model: "gemini-2.5-flash",
+    temperature: 0.1,
+});
+
+
+const SYSTEM_PROMPT = `
+You are an intelligent company assistant.
+
+You have access to the complete conversation history for the current session.
+Treat the conversation history as your memory.
+
+GENERAL BEHAVIOR
+- Answer clearly, accurately, and concisely.
+- Prefer short, direct answers unless the user asks for more detail.
+- Never invent facts.
+- If you are uncertain, say you don't know rather than guessing.
+
+CONVERSATION MEMORY
+- Always use the previous conversation history when answering.
+- If the user has already shared information (such as their name, company, preferences, or previous questions), use that information in later replies.
+- Never say:
+  - "I don't have memory."
+  - "I don't remember."
+  - "I don't store personal information."
+  if the required information exists in the conversation history provided to you.
+- The conversation history is your only memory. Do not claim you cannot access it.
+
+TOOLS
+Use tools only when external information is required.
+
+Use:
+- search_knowledge_base → Questions about PDFs, manuals, documentation, HR policies, uploaded documents, rules, FAQs.
+- search_employees → Questions about employees, employee names, roles, managers, or employee details.
+- search_companies → Questions about companies, industries, locations, or company information.
+- search_departments → Questions about departments or employees within departments.
+
+DO NOT USE TOOLS
+Do NOT use tools when the answer already exists in the conversation history.
+
+EXAMPLES
+
+User: My name is Hammad.
+Assistant: Nice to meet you, Hammad!
+
+User: What is my name?
+Assistant: Your name is Hammad.
+
+User: I work at Vertex Education.
+Assistant: Understood.
+
+User: Which company do I work at?
+Assistant: You work at Vertex Education.
+
+User: Who works in the HR department?
+Assistant: (Use search_departments)
+
+User: What is the leave policy?
+Assistant: (Use search_knowledge_base)
+
+Always prefer conversation history over asking the user to repeat information.`
+
+
+
+
+const redisClient = createClient({
+    url: env.REDIS_URL || "redis://127.0.0.1:6379",
+});
+
+redisClient.on("error", (error) => {
+    console.error("❌ Redis client error:", error.message);
+});
+
+async function ensureRedisConnection() {
+    if (!redisClient.isOpen) {
+        try {
+            await redisClient.connect();
+            console.log("✅ Redis connected for agent memory");
+        } catch (error) {
+            console.error("❌ Redis connection failed:", error.message);
+            throw error;
+        }
+    }
+}
+
+class RedisChatMemory {
+    constructor(sessionId, userId) {
+        this.sessionId = sessionId;
+        this.userId = userId;
+        this.key = `agent:session:${sessionId}`;
+    }
+
+    async getMessages() {
+        await ensureRedisConnection();
+        const payload = await redisClient.get(this.key);
+        if (!payload) return [];
+
+        const parsed = JSON.parse(payload);
+        const sessionData = Array.isArray(parsed) ? { messages: parsed } : parsed;
+
+        if (sessionData.userId) {
+            this.userId = sessionData.userId;
+        }
+
+        return (sessionData.messages || []).map((item) => {
+            switch (item.type) {
+                case "system":
+                    return new SystemMessage(item.content);
+                case "human":
+                    return new HumanMessage(item.content);
+                case "ai":
+                    return new AIMessage(item.content);
+                case "tool":
+                    return new ToolMessage({
+                        content: item.content,
+                        tool_call_id: item.tool_call_id,
+                    });
+                default:
+                    return new HumanMessage(item.content);
+            }
+        });
+    }
+
+    async addUserMessage(content) {
+        const messages = await this.getMessages();
+        messages.push(new HumanMessage(content));
+        await this.saveMessages(messages);
+    }
+
+    async addAIMessage(content) {
+        const messages = await this.getMessages();
+        messages.push(new AIMessage(content));
+        await this.saveMessages(messages);
+    }
+
+    async saveMessages(messages) {
+        await ensureRedisConnection();
+        const payload = {
+            userId: this.userId,
+            messages: messages.map((message) => {
+                if (message.constructor?.name === "SystemMessage") {
+                    return { type: "system", content: message.content };
+                }
+                if (message.constructor?.name === "HumanMessage") {
+                    return { type: "human", content: message.content };
+                }
+                if (message.constructor?.name === "AIMessage") {
+                    return { type: "ai", content: message.content };
+                }
+                if (message.constructor?.name === "ToolMessage") {
+                    return {
+                        type: "tool",
+                        content: message.content,
+                        tool_call_id: message.tool_call_id,
+                    };
+                }
+                return { type: "human", content: message.content };
+            }),
+        };
+        await redisClient.set(this.key, JSON.stringify(payload));
+    }
+}
+
+const sessionMemories = new Map();
+
+async function getMemory(sessionId, userId) {
+    if (!sessionMemories.has(sessionId)) {
+        sessionMemories.set(sessionId, new RedisChatMemory(sessionId, userId));
+    } else if (userId) {
+        const memory = sessionMemories.get(sessionId);
+        memory.userId = userId;
+    }
+    return sessionMemories.get(sessionId);
+}
+
+// ====================== Agent loop ======================
+
+async function runAgent(userInput, sessionId, userId) {
+    const memory = await getMemory(sessionId, userId);
+    const history = await memory.getMessages();
+
+
+    console.log("===== CHAT HISTORY =====");
+
+history.forEach((m, i) => {
+    console.log(i, m.constructor.name, m.content);
+});
+
+console.log("========================");
+
+    const tools = createTools(global.vectorStore);
+    const llmWithTools = llm.bindTools(tools);
+
+    const messages = [
+        new SystemMessage(SYSTEM_PROMPT),
+        ...history,
+        new HumanMessage(userInput),
+    ];
+
+    const usedTools = [];
+
+    for (let step = 0; step < MAX_AGENT_STEPS; step++) {
+        console.log(
+    messages.map(m => ({
+        role: m.constructor.name,
+        content: m.content
+    }))
+);
+        const aiMsg = await llmWithTools.invoke(messages);
+        messages.push(aiMsg);
+
+      
+        if (!aiMsg.tool_calls || aiMsg.tool_calls.length === 0) {
+            history.push(new HumanMessage(userInput));
+            history.push(new AIMessage(aiMsg.content));
+
+await memory.saveMessages(history);
+            return { answer: aiMsg.content, usedTools };
+        }
+
+        for (const toolCall of aiMsg.tool_calls) {
+            const selectedTool = tools.find((t) => t.name === toolCall.name);
+            usedTools.push(toolCall.name);
+
+            let result;
+            try {
+                if (!selectedTool) {
+                    throw new Error(`Unknown tool: ${toolCall.name}`);
+                }
+                result = await selectedTool.invoke(toolCall.args);
+            } catch (error) {
+                result = `Tool error: ${error.message}`;
+            }
+
+            messages.push(
+                new ToolMessage({
+                    content:
+                        typeof result === "string" ? result : JSON.stringify(result),
+                    tool_call_id: toolCall.id,
+                })
+            );
+        }
+    }
+
+    // Exceeded MAX_AGENT_STEPS without a final answer.
+    history.push(new HumanMessage(userInput));
+history.push(new AIMessage("Unable to solve request."));
+
+await memory.saveMessages(history);
+
+    return { answer: "Unable to solve request.", usedTools };
+}
+
+
+
+const agentRequestSchema = z.object({
+    message: z.string().min(1, "message is required").max(2000),
+    sessionId: z.string().min(1, "sessionId is required"),
+    userId: z.string().min(1, "userId is required").max(200).optional(),
+});
+
+router.post(
+    "/",
+    agentRateLimiter,
+    asyncHandler(async (req, res) => {
+        const parsed = agentRequestSchema.safeParse(req.body);
+
+        if (!parsed.success) {
+            return res.status(400).json({
+                error: "Invalid request",
+                details: parsed.error.flatten(),
+            });
+        }
+
+        const { message, sessionId, userId } = parsed.data;
+        const result = await runAgent(message, sessionId, userId);
+
+        return res.json(result);
+    })
+);
+
+export default router;
+export { runAgent };

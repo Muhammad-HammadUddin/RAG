@@ -23,6 +23,9 @@ const envSchema = z.object({
   // Set this if you ever split tool logic into a separate service.
   TOOLS_BASE_URL: z.string().url().optional(),
 
+  // Redis-backed session memory
+  REDIS_URL: z.string().default("redis://127.0.0.1:6379"),
+
   // Rate limiting
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000), // 15 min
   RATE_LIMIT_MAX: z.coerce.number().default(100),

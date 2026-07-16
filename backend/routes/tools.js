@@ -6,12 +6,7 @@ import { searchEmployees } from "../services/employeeService.js";
 import { searchCompanies } from "../services/companyService.js";
 import { searchDepartments } from "../services/departmentService.js";
 
-/**
- * Builds the full toolset the agent can call.
- * vectorStore is passed in explicitly (instead of relying on a global)
- * so the knowledge-base tool always searches the store that's actually
- * live for this request.
- */
+
 export function createTools(vectorStore) {
   const searchKnowledgeBaseTool = tool(
     async ({ query }) => {
