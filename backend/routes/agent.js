@@ -279,13 +279,12 @@ await memory.saveMessages(history);
             );
         }
     }
-
     history.push(new HumanMessage(userInput));
 history.push(new AIMessage("Unable to solve request."));
 
 await memory.saveMessages(history);
 
-    return { answer: "Unable to solve request.", usedTools };
+    return { answer: "Unable to solve request right now.", usedTools };
 }
 
 
