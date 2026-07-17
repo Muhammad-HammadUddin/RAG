@@ -284,7 +284,7 @@ history.push(new AIMessage("Unable to solve request."));
 
 await memory.saveMessages(history);
 
-    return { answer: "Unable to solve request right now.", usedTools };
+    return { answer: "Unable to solve request right now unfortunately.", usedTools };
 }
 
 
