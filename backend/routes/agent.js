@@ -280,7 +280,6 @@ await memory.saveMessages(history);
         }
     }
 
-    // Exceeded MAX_AGENT_STEPS without a final answer.
     history.push(new HumanMessage(userInput));
 history.push(new AIMessage("Unable to solve request."));
 
