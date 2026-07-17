@@ -12,8 +12,8 @@ pipeline {
         stage('Deploy') {
             steps {
                 dir('backend') {
-                    sh 'docker compose down || true'
-                    sh 'docker compose up --build -d'
+                    bat 'docker compose down'
+                    bat 'docker compose up --build -d'
                 }
             }
         }
