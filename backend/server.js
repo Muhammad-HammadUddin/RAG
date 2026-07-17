@@ -7,11 +7,12 @@ import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { TaskType } from "@google/generative-ai";
 
 import { env } from "./config/env.js";
-import { apiRateLimiter } from "./middleware/ratelimiter.js";
+import { apiRateLimiter,agentRateLimiter } from "./middleware/ratelimiter.js";
 import { notFoundHandler, errorHandler } from "./middleware/errorhandler.js";
 import agentRouter from "./routes/agent.js";
 import { disconnect } from "./db.js";
-
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { Document } from "@langchain/core/documents";
 const app = express();
 
 app.use(helmet());
@@ -151,5 +152,10 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (err) => {
     console.error("Uncaught Exception:", err);
 });
+
+
+
+
+
 
 startServer();

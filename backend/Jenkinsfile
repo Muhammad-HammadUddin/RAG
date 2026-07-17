@@ -1,0 +1,21 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                dir('backend') {
+                    sh 'docker compose down || true'
+                    sh 'docker compose up --build -d'
+                }
+            }
+        }
+    }
+}
