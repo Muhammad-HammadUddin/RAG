@@ -413,7 +413,7 @@ router.get(
 
         return res.status(201).json({
             success: true,
-            message: "telecard_knowledge_base.pdf indexed successfully.",
+            message: "telecard_knowledge_base.pdf indexed successfully!.",
             file: "telecard_knowledge_base.pdf",
            
         });
