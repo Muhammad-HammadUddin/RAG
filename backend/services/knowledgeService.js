@@ -1,15 +1,16 @@
-export async function searchKnowledgeBase(vectorStore, query, threshold = 0.75) {
+export async function searchKnowledgeBase(vectorStore, query) {
   if (!vectorStore) {
     throw new Error("Vector store not initialized.");
   }
 
-  const results = await vectorStore.similaritySearchWithScore(query, 5);
+  const docs = await vectorStore.similaritySearch(query, 10);
 
-  const filtered = results.filter(([, score]) => score >= threshold);
+  docs.forEach((doc, index) => {
+    console.log(`========== Chunk ${index + 1} ==========`);
+    console.log(doc.pageContent);
+    console.log("Metadata:", doc.metadata);
+    console.log("----------------------------------------");
+  });
 
-  if (!filtered.length) {
-    return "No relevant context found in the knowledge base.";
-  }
-
-  return filtered.map(([doc]) => doc.pageContent).join("\n\n");
+  return docs.map(doc => doc.pageContent).join("\n\n");
 }

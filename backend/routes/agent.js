@@ -226,6 +226,13 @@ history.forEach((m, i) => {
 console.log("========================");
 
     const tools = createTools(global.vectorStore);
+    console.log(
+   tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+  }))
+  );
+
     const llmWithTools = llm.bindTools(tools);
 
     const messages = [
@@ -245,6 +252,8 @@ console.log("========================");
     }))
 
         const aiMsg = await llmWithTools.invoke(messages);
+        console.log("AI RESPONSE:");
+        console.dir(aiMsg, { depth: null });
         messages.push(aiMsg);
 
       
@@ -316,67 +325,67 @@ router.post(
 );
 
 
-router.post(
-    "/upload-pdf",
-    agentRateLimiter,
-    (req, res, next) => {
-        upload.single("file")(req, res, (error) => {
-            if (error) {
-                return res.status(400).json({
-                    error: "File upload failed",
-                    message: error.message,
-                });
-            }
-            next();
-        });
-    },
-    asyncHandler(async (req, res) => {
-        if (!req.file) {
-            return res.status(400).json({ error: "No PDF file provided." });
-        }
+// router.post(
+//     "/upload-pdf",
+//     agentRateLimiter,
+//     (req, res, next) => {
+//         upload.single("file")(req, res, (error) => {
+//             if (error) {
+//                 return res.status(400).json({
+//                     error: "File upload failed",
+//                     message: error.message,
+//                 });
+//             }
+//             next();
+//         });
+//     },
+//     asyncHandler(async (req, res) => {
+//         if (!req.file) {
+//             return res.status(400).json({ error: "No PDF file provided." });
+//         }
 
-        const vectorStore = global.vectorStore;
-        if (!vectorStore) {
-            return res.status(503).json({
-                error: "Vector store not initialized. Try again shortly.",
-            });
-        }
+//         const vectorStore = global.vectorStore;
+//         if (!vectorStore) {
+//             return res.status(503).json({
+//                 error: "Vector store not initialized. Try again shortly.",
+//             });
+//         }
 
-        const pdfPath = "./telecard_knowledge_base.pdf";
+//         const pdfPath = "./telecard_knowledge_base.pdf";
 
-  const buffer = fs.readFileSync(pdfPath);
+//   const buffer = fs.readFileSync(pdfPath);
   
-  const pdfresult = new PDFParse({data:buffer});
-  const result= await pdfresult.getText()
-  const text = result.text;
+//   const pdfresult = new PDFParse({data:buffer});
+//   const result= await pdfresult.getText()
+//   const text = result.text;
 
        
 
-        // Split text into chunks
-        const splitter = new RecursiveCharacterTextSplitter({
-            chunkSize: 1000,
-            chunkOverlap: 150,
-        });
+//         // Split text into chunks
+//         const splitter = new RecursiveCharacterTextSplitter({
+//             chunkSize: 1000,
+//             chunkOverlap: 150,
+//         });
 
         
 
-        // Wrap chunks as LangChain Documents with metadata
-        const docs = await splitter.createDocuments([text]);
+//         // Wrap chunks as LangChain Documents with metadata
+//         const docs = await splitter.createDocuments([text]);
 
 
-        // Embed and store in Qdrant
-        await vectorStore.addDocuments(docs);
+//         // Embed and store in Qdrant
+//         await vectorStore.addDocuments(docs);
 
-        return res.status(201).json({
-            success: true,
-            message: "PDF uploaded and added to knowledge base.",
-            fileName: req.file.originalname,
-            storedName: req.file.filename,
-            savedAt: req.file.path,
+//         return res.status(201).json({
+//             success: true,
+//             message: "PDF uploaded and added to knowledge base.",
+//             fileName: req.file.originalname,
+//             storedName: req.file.filename,
+//             savedAt: req.file.path,
            
-        });
-    })
-);
+//         });
+//     })
+// );
 
 
 
@@ -386,6 +395,7 @@ router.get(
     agentRateLimiter,
     asyncHandler(async (req, res) => {
         const vectorStore = global.vectorStore;
+        console.log(vectorStore)
 
         if (!vectorStore) {
             return res.status(503).json({
@@ -393,11 +403,16 @@ router.get(
             });
         }
  const pdfPath = "./telecard_knowledge_base.pdf";
+ console.log(process.cwd());
+console.log(pdfPath);
+console.log(fs.existsSync(pdfPath));
 
   const buffer = fs.readFileSync(pdfPath);
   
   const pdfresult = new PDFParse({data:buffer});
+  
   const result= await pdfresult.getText()
+  console.log(result.text.length);
   const text = result.text;
 
         const splitter = new RecursiveCharacterTextSplitter({

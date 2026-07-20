@@ -10,6 +10,7 @@ import { searchDepartments } from "../services/departmentService.js";
 export function createTools(vectorStore) {
   const searchKnowledgeBaseTool = tool(
     async ({ query }) => {
+      console.log("Tool Called")
       if (!vectorStore) {
         return "No knowledge base has been uploaded yet.";
       }
