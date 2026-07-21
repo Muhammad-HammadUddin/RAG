@@ -13,6 +13,11 @@ import agentRouter from "./routes/agent.js";
 import { disconnect } from "./db.js";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { Document } from "@langchain/core/documents";
+import { QdrantClient } from "@qdrant/js-client-rest";
+
+const qdrantClient = new QdrantClient({
+    url: env.QDRANT_URL,
+});
 const app = express();
 
 app.use(helmet());
@@ -97,7 +102,7 @@ app.get("/health", (req, res) => {
     });
 });
 
-app.use("/api", agentRouter);
+app.use("/api/knowledge", agentRouter);
 
 app.get("/", (req, res) => {
     res.send("RAG + Agent + Neon Server Running...");

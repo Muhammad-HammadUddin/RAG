@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/knowledge'
 const CHAT_USER_ID_KEY = 'chat-user-id'
 
 function getOrCreateUserId() {
