@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/ask'
@@ -31,46 +31,75 @@ function App() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
-  const sendMessage = async () => {
-    const text = input.trim()
-    if (!text || isLoading) return
-
+  useEffect(() => {
     const userId = getOrCreateUserId()
     const sessionId = `session-${userId}`
-    const botId = `${userId}-${Date.now()}`
 
-    setMessages((prev) => [...prev, { id: `${userId}-${Date.now()}-user`, sender: 'user', text }])
-    setMessages((prev) => [...prev, { id: botId, sender: 'bot', text: 'Thinking…' }])
-    setInput('')
-    setIsLoading(true)
-
-    try {
-      const response = await fetch(`${API_BASE}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId, userId }),
+    fetch(`${API_BASE}/history?sessionId=${sessionId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load history')
+        return res.json()
       })
+      .then((data) => {
+        if (data.messages?.length) {
+          setMessages(data.messages)
+        }
+      })
+      .catch(() => {
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(errorText || 'Unable to reach the assistant right now.')
-      }
+      })
+  }, [])
 
-      const payload = await response.json()
-      const answer = payload?.answer || 'The assistant did not return a reply.'
+ const sendMessage = async () => {
+  const text = input.trim()
+  if (!text || isLoading) return
 
-      setMessages((prev) => prev.map((msg) =>
-        msg.id === botId ? { ...msg, text: answer } : msg
-      ))
-    } catch (error) {
-      setMessages((prev) => prev.map((msg) =>
-        msg.id === botId ? { ...msg, text: error.message || 'The assistant could not respond.' } : msg
-      ))
-    } finally {
-      setIsLoading(false)
+  const userId = getOrCreateUserId()
+  const sessionId = `session-${userId}`
+  const botId = `${userId}-${Date.now()}`
+
+  setMessages((prev) => [...prev, { id: `${userId}-${Date.now()}-user`, sender: 'user', text }])
+  setMessages((prev) => [...prev, { id: botId, sender: 'bot', text: 'Thinking…' }])
+  setInput('')
+  setIsLoading(true)
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 20000) // hang na ho
+
+  try {
+    const response = await fetch(`${API_BASE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, sessionId, userId }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const errText = response.status === 429
+        ? 'Too many messages, please wait a bit.'
+        : 'The assistant is not available right now.'
+      throw new Error(errText)
     }
-  }
 
+    const payload = await response.json()
+    const answer = payload?.answer || 'The assistant did not return a reply.'
+
+    setMessages((prev) => prev.map((msg) =>
+      msg.id === botId ? { ...msg, text: answer } : msg
+    ))
+  } catch (error) {
+    const text = error.name === 'AbortError'
+      ? 'The assistant is taking too long. Please try again.'
+      : (error.message || 'The assistant is not available right now.')
+
+    setMessages((prev) => prev.map((msg) =>
+      msg.id === botId ? { ...msg, text } : msg
+    ))
+  } finally {
+    clearTimeout(timeoutId)
+    setIsLoading(false)
+  }
+}
   return (
     <div className="app-shell">
       <header className="topbar">
