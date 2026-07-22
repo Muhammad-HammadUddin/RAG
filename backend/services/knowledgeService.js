@@ -3,7 +3,7 @@ export async function searchKnowledgeBase(vectorStore, query) {
     throw new Error("Vector store not initialized.");
   }
 
-  const docs = await vectorStore.similaritySearch(query, 10);
+  const docs = await vectorStore.similaritySearch(query, 5);
 
   docs.forEach((doc, index) => {
     console.log(`========== Chunk ${index + 1} ==========`);

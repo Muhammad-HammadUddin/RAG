@@ -14,23 +14,7 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       QDRANT_URL: ${QDRANT_URL:-}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-
-
-
-      
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:7-alpine
-    container_name: rag-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes"]
+      REDIS_URL: ${REDIS_URL}
+      MONGO_URI: ${MONGO_URI:-}
     volumes:
-      - redis_data:/data
-
-volumes:
-  redis_data:
+      - ./uploads:/app/uploads

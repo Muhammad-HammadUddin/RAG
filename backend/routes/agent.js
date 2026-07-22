@@ -6,6 +6,7 @@ import multer from "multer";
 import {PDFParse} from "pdf-parse";
 import { z } from "zod";
 import { qdrantClient } from "../config/qdrant.js";
+import {llm} from "../config/llm.js"
 import {
     SystemMessage,
     HumanMessage,
@@ -22,6 +23,7 @@ import { createTools } from "./tools.js";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { Document } from "@langchain/core/documents";
 
+import { redisClient } from "../config/redis.js";
 
 
 
@@ -68,11 +70,6 @@ const upload = multer({
 
 // ====================== LLM ======================
 
-const llm = new ChatGoogleGenerativeAI({
-    apiKey: env.GOOGLE_API_KEY,
-    model: "gemini-2.5-flash",
-    temperature: 0.1,
-});
 
 
 const SYSTEM_PROMPT = `
@@ -103,13 +100,7 @@ IMPORTANT
 Before answering ANY Telecard-related question, always search the knowledge base first. Even if you think you already know the answer, search first and then answer only using the retrieved information.
 `;
 
-const redisClient = createClient({
-    url: env.REDIS_URL || "redis://127.0.0.1:6379",
-});
 
-redisClient.on("error", (error) => {
-    console.error("❌ Redis client error:", error.message);
-});
 
 async function ensureRedisConnection() {
     if (!redisClient.isOpen) {
@@ -175,6 +166,7 @@ class RedisChatMemory {
 
     async saveMessages(messages) {
         await ensureRedisConnection();
+        const trimmed = messages.slice(-6); 
         const payload = {
             userId: this.userId,
             messages: messages.map((message) => {
@@ -213,7 +205,6 @@ async function getMemory(sessionId, userId) {
     return sessionMemories.get(sessionId);
 }
 
-// ====================== Agent loop ======================
 
 async function runAgent(userInput, sessionId, userId) {
     const memory = await getMemory(sessionId, userId);
@@ -326,141 +317,6 @@ router.post(
         return res.json(result);
     })
 );
-
-
-
-
-
-
-
-
-
-
-
-
-router.post("/upload-pdf", upload.single("file"), asyncHandler(async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: "No PDF uploaded." });
-    }
-
-    const buffer = fs.readFileSync(req.file.path);
-
-    const pdf = new PDFParse({ data: buffer });
-    const result = await pdf.getText();
-
-    const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 150,
-    });
-
-    const docs = await splitter.createDocuments([result.text]);
-
-    await global.vectorStore.addDocuments(docs);
-
-    fs.unlinkSync(req.file.path);
-
-    res.json({
-        success: true,
-        chunks: docs.length,
-    });
-}));
-
-
-
-
-
-
-// 2. Append Text
-
-
-
-router.post("/add-text", asyncHandler(async (req, res) => {
-
-    const { text } = req.body;
-
-    if (!text) {
-        return res.status(400).json({
-            error: "Text is required."
-        });
-    }
-
-    const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 150,
-    });
-
-    const docs = await splitter.createDocuments([text]);
-
-    await global.vectorStore.addDocuments(docs);
-
-    res.json({
-        success: true,
-        chunks: docs.length,
-    });
-
-}));
-
-
-
-
-// 3. Reindex (Delete everything + Upload new PDF)
-
-
-
-router.post("/reindex", upload.single("file"), asyncHandler(async (req, res) => {
-
-    if (!req.file) {
-        return res.status(400).json({
-            error: "No PDF uploaded."
-        });
-    }
-
-    await qdrantClient.deleteCollection("langchainjs-testing");
-
-    await qdrantClient.createCollection("langchainjs-testing", {
-        vectors: {
-            size: 768,
-            distance: "Cosine",
-        },
-    });
-
-    global.vectorStore = await QdrantVectorStore.fromExistingCollection(
-        embeddings,
-        {
-            url: env.QDRANT_URL,
-            collectionName: "langchainjs-testing",
-        }
-    );
-
-    const buffer = fs.readFileSync(req.file.path);
-
-    const pdf = new PDFParse({
-        data: buffer,
-    });
-
-    const result = await pdf.getText();
-
-    const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 150,
-    });
-
-    const docs = await splitter.createDocuments([result.text]);
-
-    await global.vectorStore.addDocuments(docs);
-
-    fs.unlinkSync(req.file.path);
-
-    res.json({
-        success: true,
-        chunks: docs.length,
-    });
-
-}));
-
-
-
-
 
 
 export default router;

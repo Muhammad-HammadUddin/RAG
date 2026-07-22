@@ -2,9 +2,9 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import { searchKnowledgeBase } from "../services/knowledgeService.js";
-import { searchEmployees } from "../services/employeeService.js";
-import { searchCompanies } from "../services/companyService.js";
-import { searchDepartments } from "../services/departmentService.js";
+// import { searchEmployees } from "../services/employeeService.js";
+// import { searchCompanies } from "../services/companyService.js";
+// import { searchDepartments } from "../services/departmentService.js";
 
 
 export function createTools(vectorStore) {

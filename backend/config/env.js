@@ -10,6 +10,8 @@ const envSchema = z.object({
   GOOGLE_API_KEY: z.string().min(1, "GOOGLE_API_KEY is required"),
   QDRANT_URL: z.string().url("QDRANT_URL must be a valid URL"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  QDRANT_API_KEY: z.string().min(1, "QDRANT_API_KEY is required"),
+  MONGO_URI: z.string().min(1, "MONGO_URI is required"),
 
   // Auth is disabled for now (see server.js). Set this and re-enable
   // apiKeyAuth in server.js before deploying publicly.
@@ -18,10 +20,7 @@ const envSchema = z.object({
   // CORS - "*" for now during dev, replace with real origin(s) once deployed
   ALLOWED_ORIGINS: z.string().default("*"),
 
-  // Internal base URL the agent's tools call to reach routes/tools.js.
-  // Leave unset while everything runs in one process (defaults to localhost:PORT).
-  // Set this if you ever split tool logic into a separate service.
-  TOOLS_BASE_URL: z.string().url().optional(),
+  //
 
   // Redis-backed session memory
   REDIS_URL: z.string().default("redis://127.0.0.1:6379"),

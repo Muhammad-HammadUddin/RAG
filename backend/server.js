@@ -5,23 +5,40 @@ import { createClient } from "redis";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { TaskType } from "@google/generative-ai";
-
+import connectDB from "./config/db.js";
+import {qdrantClient} from "./config/qdrant.js";
 import { env } from "./config/env.js";
 import { apiRateLimiter,agentRateLimiter } from "./middleware/ratelimiter.js";
 import { notFoundHandler, errorHandler } from "./middleware/errorhandler.js";
-import agentRouter from "./routes/agent.js";
+import knowledgeRoutes from "./routes/knowledgeRoutes.js";
+import agentRoutes from "./routes/agent.js";
 import { disconnect } from "./db.js";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { Document } from "@langchain/core/documents";
-import { QdrantClient } from "@qdrant/js-client-rest";
+import { redisClient, connectRedis } from "./config/redis.js";
 
-const qdrantClient = new QdrantClient({
-    url: env.QDRANT_URL,
-});
+import { QdrantClient } from "@qdrant/js-client-rest";
+import multer from "multer";
+import dotenv from "dotenv"
+dotenv.config()
 const app = express();
 
 app.use(helmet());
 app.use(express.json({ limit: "1mb" }));
+
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+  if (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+  next();
+});
+
+
+connectDB();
+
 
 const allowedOrigins =
     env.ALLOWED_ORIGINS === "*"
@@ -31,8 +48,7 @@ const allowedOrigins =
 app.use(
     cors({
         origin: allowedOrigins,
-        methods: ["GET", "POST"],
-        allowedHeaders: ["Content-Type", "x-api-key"],
+        methods: ["GET", "POST","PUT","DELETE"],
     })
 );
 
@@ -59,10 +75,19 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
 
 async function initVectorStore() {
     try {
+
+        await qdrantClient.createPayloadIndex("langchainjs-testing", {
+            field_name: "metadata.knowledgeId",
+            field_schema: "keyword",
+        }).catch(() => {});
+
+        console.log("✅ Payload index ready");
+
         const vectorStore = await QdrantVectorStore.fromExistingCollection(
             embeddings,
             {
                 url: env.QDRANT_URL,
+                apiKey: env.QDRANT_API_KEY,
                 collectionName: "langchainjs-testing",
             }
         );
@@ -71,27 +96,14 @@ async function initVectorStore() {
         globalThis.vectorStore = vectorStore;
 
         console.log("✅ Qdrant Vector Store Initialized");
+
     } catch (error) {
-        console.error("❌ Vector Store Init Failed:", error.message);
+        console.error("❌ Vector Store Init Failed:", error);
     }
 }
 
-const redisClient = createClient({
-    url: process.env.REDIS_URL || "redis://redis:6379",
-});
 
-redisClient.on("error", (err) => {
-    console.error("❌ Redis Error:", err.message);
-});
 
-async function connectRedis() {
-    try {
-        await redisClient.connect();
-        console.log("✅ Redis Connected");
-    } catch (err) {
-        console.error("❌ Failed to connect to Redis:", err.message);
-    }
-}
 
 app.get("/health", (req, res) => {
     res.status(200).json({
@@ -102,7 +114,8 @@ app.get("/health", (req, res) => {
     });
 });
 
-app.use("/api/knowledge", agentRouter);
+app.use("/api/knowledge", knowledgeRoutes);
+app.use("/api/ask", agentRoutes);
 
 app.get("/", (req, res) => {
     res.send("RAG + Agent + Neon Server Running...");
@@ -157,9 +170,6 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (err) => {
     console.error("Uncaught Exception:", err);
 });
-
-
-
 
 
 
