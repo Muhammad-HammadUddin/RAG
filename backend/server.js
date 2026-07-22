@@ -5,14 +5,14 @@ import { createClient } from "redis";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { TaskType } from "@google/generative-ai";
-import connectDB from "./config/db.js";
+import connectDB ,{disconnectDB }from "./config/db.js";
 import {qdrantClient} from "./config/qdrant.js";
 import { env } from "./config/env.js";
 import { apiRateLimiter,agentRateLimiter } from "./middleware/ratelimiter.js";
 import { notFoundHandler, errorHandler } from "./middleware/errorhandler.js";
 import knowledgeRoutes from "./routes/knowledgeRoutes.js";
 import agentRoutes from "./routes/agent.js";
-import { disconnect } from "./db.js";
+
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { Document } from "@langchain/core/documents";
 import { redisClient, connectRedis } from "./config/redis.js";
@@ -146,7 +146,7 @@ async function shutdown(signal) {
             console.log("✅ Redis Disconnected");
         }
 
-        await disconnect();
+        await disconnectDB();
 
         server?.close(() => {
             console.log("✅ Server Closed");
