@@ -26,7 +26,7 @@ function getOrCreateUserId() {
 function App() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([
-    { id: 1, sender: 'bot', text: 'Hello! I can help with pricing, setup, and integration. Ask me anything.' },
+    { id: 1, sender: 'bot', text: 'Welcome to Telecard Bot.How can i help you today! ' },
   ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)

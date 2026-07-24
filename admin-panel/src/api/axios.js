@@ -5,7 +5,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 30000, // 30s — PDF embedding can take a while server-side
+  timeout: 30000, 
 });
 
 /**
